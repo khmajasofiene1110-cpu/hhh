@@ -1,0 +1,17 @@
+# WalletIQ front controller — URL base: http://localhost/projet_web/hhh/
+# If the app is at http://localhost/hhh/ only, set: RewriteBase /hhh/
+
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /projet_web/hhh/
+
+    # Existing files (CSS, JS, images under public/, etc.) — do not rewrite
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # All other requests → PHP router (dashboard, profile, /api/*, …)
+    RewriteRule ^ index.php [L]
+</IfModule>
