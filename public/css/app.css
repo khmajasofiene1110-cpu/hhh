@@ -176,7 +176,7 @@ a {
   flex-shrink: 0;
 }
 
-/* Home / auth */
+/* === AUTH FORMS === */
 .page-home {
   flex: 1;
 }
@@ -198,6 +198,47 @@ a {
   width: 100%;
   max-width: 22rem;
   margin: 0 auto;
+}
+
+/* Login page: one visible panel; slides between login and sign up */
+.auth-slider {
+  overflow: hidden;
+  width: 100%;
+}
+
+.auth-slider-track {
+  display: flex;
+  width: 200%;
+  transition: transform 0.38s cubic-bezier(0.33, 1, 0.68, 1);
+  will-change: transform;
+}
+
+.auth-slider--login .auth-slider-track {
+  transform: translateX(0);
+}
+
+.auth-slider--signup .auth-slider-track {
+  transform: translateX(-50%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-slider-track {
+    transition: none;
+  }
+}
+
+.auth-slider-pane {
+  width: 50%;
+  flex: 0 0 50%;
+  box-sizing: border-box;
+}
+
+.auth-slider-lead {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  margin: 0 0 0.75rem;
+  line-height: 1.45;
+  padding: 0 0.125rem;
 }
 
 .auth-header {
@@ -256,6 +297,17 @@ a {
   cursor: pointer;
   font-family: inherit;
   transition: background 0.15s ease, color 0.15s ease;
+  text-align: center;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+a.auth-tab,
+button.auth-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
 }
 
 .auth-tab--active {
@@ -349,6 +401,20 @@ a {
   pointer-events: none !important;
 }
 
+/* Off-screen POST form (admin delete) — do not use [hidden] on <form>; it can block submit(). */
+.adm-delete-form-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  border: 0;
+  white-space: nowrap;
+}
+
 /* Spinner */
 .spinner {
   display: flex;
@@ -371,7 +437,7 @@ a {
   }
 }
 
-/* Dashboard */
+/* === DASHBOARD === */
 .dash-page {
   display: flex;
   flex-direction: column;
@@ -871,7 +937,7 @@ a {
   color: var(--color-white);
 }
 
-/* Budgets */
+/* === BUDGETS === */
 .budgets-page {
   display: flex;
   flex-direction: column;
@@ -976,7 +1042,7 @@ a {
   color: var(--color-error);
 }
 
-/* Stats */
+/* === STATS === */
 .stats-page {
   display: flex;
   flex-direction: column;
@@ -1588,7 +1654,7 @@ a {
   }
 }
 
-/* Goals */
+/* === GOALS === */
 .goals-page {
   display: flex;
   flex-direction: column;
@@ -1813,7 +1879,7 @@ a {
   }
 }
 
-/* Profile — same rhythm as Dashboard (.dash-page) */
+/* === PROFILE === */
 .profile-page {
   display: flex;
   flex-direction: column;
@@ -1915,6 +1981,11 @@ a {
   padding: 0.65rem;
   border-radius: var(--radius);
   cursor: pointer;
+  display: block;
+  text-align: center;
+  text-decoration: none;
+  color: inherit;
+  box-sizing: border-box;
 }
 
 .pf-logout-inner {
@@ -1986,95 +2057,7 @@ a {
   color: white;
 }
 
-/* Admin login */
-.page-admin-login {
-  min-height: calc(100vh - 0px);
-}
-
-.admin-login-page {
-  min-height: calc(100vh - 6rem);
-  width: 100%;
-  padding: 2.5rem 1rem;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-}
-
-.admin-login-card {
-  width: 100%;
-  max-width: 28rem;
-  border-radius: 1rem;
-  background: white;
-  padding: 1.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  border: 1px solid rgba(0, 0, 0, 0.05);
-}
-
-.admin-login-h1 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.admin-login-lead {
-  margin-top: 0.25rem;
-  font-size: 0.875rem;
-  color: rgba(0, 0, 0, 0.5);
-}
-
-.admin-login-form {
-  margin-top: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.admin-login-label {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.6);
-  display: block;
-  margin-bottom: 0.35rem;
-}
-
-.admin-login-input {
-  width: 100%;
-  border-radius: 0.5rem;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-  font-family: inherit;
-}
-
-.admin-login-error {
-  border-radius: 0.5rem;
-  border: 1px solid #fecaca;
-  background: #fef2f2;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-  color: #991b1b;
-}
-
-.admin-login-submit {
-  margin-top: 0.25rem;
-  width: 100%;
-  border: none;
-  border-radius: 0.5rem;
-  padding: 0.65rem;
-  font-weight: 600;
-  font-size: 0.875rem;
-  background: #7c3aed;
-  color: white;
-  cursor: pointer;
-  box-shadow: 0 1px 2px rgba(124, 58, 237, 0.2);
-}
-
-.admin-login-submit:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* Admin dashboard */
+/* === ADMIN (dashboard) === */
 .page-admin {
   padding: 1rem;
   max-width: 72rem;
@@ -2125,6 +2108,7 @@ a {
 }
 
 .admin-dash-logout {
+  display: inline-block;
   border: 1px solid rgba(0, 0, 0, 0.1);
   background: white;
   border-radius: 0.5rem;
@@ -2134,6 +2118,7 @@ a {
   color: rgba(0, 0, 0, 0.7);
   cursor: pointer;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  text-decoration: none;
 }
 
 .admin-dash-stats {

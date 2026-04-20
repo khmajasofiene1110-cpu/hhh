@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 ?>
+<!-- View: budgets | Per-category monthly limits -->
 <div class="budgets-page">
     <div id="bg-guest" class="state state--center" hidden><div class="spinner" role="status"><span class="spinner__ring" aria-hidden="true"></span></div></div>
     <div id="bg-app" hidden>

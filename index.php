@@ -1,5 +1,11 @@
 <?php
 
+/**
+ * File: index.php
+ * Purpose: Front controller — dispatches POST actions then page routes
+ * Routes: All paths under this app directory
+ */
+
 declare(strict_types=1);
 
 require __DIR__ . '/app/bootstrap.php';
@@ -7,31 +13,23 @@ require __DIR__ . '/app/bootstrap.php';
 $path = route_path();
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
-// --- Auth API ---
-if ($path === '/api/auth/register' && $method === 'POST') {
-    (new AuthApiController())->register();
+// --- Auth ---
+if ($path === '/login' && $method === 'POST') {
+    (new AuthController())->loginPost();
     exit;
 }
-if ($path === '/api/auth/login' && $method === 'POST') {
-    (new AuthApiController())->login();
+if ($path === '/register' && $method === 'POST') {
+    (new AuthController())->processRegister();
     exit;
 }
-if ($path === '/api/auth/logout' && $method === 'POST') {
-    (new AuthApiController())->logout();
-    exit;
-}
-if ($path === '/api/auth/me' && $method === 'GET') {
-    (new AuthApiController())->me();
+if ($path === '/logout' && $method === 'GET') {
+    (new AuthController())->logout();
     exit;
 }
 
-// --- API (same contract as Express: /admin/users) ---
-if ($path === '/api/admin/users' && $method === 'GET') {
-    (new AdminApiController())->listUsers();
-    exit;
-}
-if (preg_match('#^/api/admin/users/(\d+)$#', $path, $m) && $method === 'DELETE') {
-    (new AdminApiController())->deleteUser((int) $m[1]);
+// --- Admin ---
+if ($path === '/admin/users/delete' && $method === 'POST') {
+    (new AdminController())->deleteUserPost();
     exit;
 }
 

@@ -1,5 +1,11 @@
 <?php
 
+/**
+ * File: models/UserModel.php
+ * Purpose: users table CRUD and password check for web auth
+ * Routes: N/A (used by AuthController)
+ */
+
 declare(strict_types=1);
 
 final class UserModel
@@ -42,16 +48,16 @@ final class UserModel
      */
     public function create(string $username, string $email, string $password, string $fullName): array
     {
-        $hash = password_hash($password, PASSWORD_DEFAULT);
-        if ($hash === false) {
-            throw new RuntimeException('Could not hash password.');
-        }
         $stmt = Database::pdo()->prepare(
             'INSERT INTO users (username, email, full_name, password) VALUES (?, ?, ?, ?)'
         );
-        $stmt->execute([trim($username), trim($email), $fullName === '' ? null : trim($fullName), $hash]);
+        $stmt->execute([trim($username), trim($email), $fullName === '' ? null : trim($fullName), trim($password)]);
         $id = (int) Database::pdo()->lastInsertId();
-        $row = $this->findById($id);
+        $row = $id > 0 ? $this->findById($id) : null;
+        if ($row === null) {
+            $row = $this->findByUsernameOrEmail(trim($email))
+                ?? $this->findByUsernameOrEmail(trim($username));
+        }
         if ($row === null) {
             throw new RuntimeException('User not found after insert.');
         }
@@ -93,8 +99,8 @@ final class UserModel
         ];
     }
 
-    public function verifyPassword(string $plain, string $hash): bool
+    public function verifyPassword(string $plain, string $stored): bool
     {
-        return password_verify($plain, $hash);
+        return trim((string) $stored) === trim((string) $plain);
     }
 }

@@ -1,5 +1,10 @@
 <?php
 
+/**
+ * File: views/layout.php
+ * Purpose: HTML shell, assets, optional __WALLETIQ_PHP_USER__ for client hydration
+ */
+
 declare(strict_types=1);
 
 /** @var string $content */
@@ -9,12 +14,14 @@ declare(strict_types=1);
 /** @var bool $showNav */
 /** @var string $bodyClass */
 /** @var string $baseUrl */
+/** @var array{id:int,username:string,email:string,fullName:string,createdAt:string}|null $phpUser */
 
 $b = htmlspecialchars($baseUrl ?? '', ENT_QUOTES, 'UTF-8');
 $p = htmlspecialchars($page ?? '', ENT_QUOTES, 'UTF-8');
 $t = htmlspecialchars($title ?? 'WalletIQ', ENT_QUOTES, 'UTF-8');
 $bc = htmlspecialchars($bodyClass ?? '', ENT_QUOTES, 'UTF-8');
 ?>
+<!-- View: layout | App HTML wrapper and scripts -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -44,6 +51,11 @@ $bc = htmlspecialchars($bodyClass ?? '', ENT_QUOTES, 'UTF-8');
 <?php else: ?>
     <?= $content ?>
 <?php endif; ?>
+<?php if (!empty($phpUser) && is_array($phpUser)): ?>
+<script>
+window.__WALLETIQ_PHP_USER__ = <?= json_encode($phpUser, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+</script>
+<?php endif; ?>
 <script src="<?= $b ?>/public/js/walletiq-core.js" defer></script>
 <script src="<?= $b ?>/public/js/walletiq-app.js" defer></script>
 <script defer>
@@ -51,7 +63,7 @@ $bc = htmlspecialchars($bodyClass ?? '', ENT_QUOTES, 'UTF-8');
   document.addEventListener('DOMContentLoaded', function () {
     if (window.WalletIQCore) return;
     var msg = 'WalletIQ could not load (missing core script). Use the app URL that ends with <strong>hhh/</strong> (e.g. <code>/projet_web/hhh/</code>) and check the Network tab for 404s on <code>walletiq-core.js</code>.';
-    var targets = document.querySelectorAll('#auth-loading, #pf-guest, #dash-guest, #bg-guest, #st-guest, #gl-guest');
+    var targets = document.querySelectorAll('#auth-loading, #pf-guest, #bg-guest, #st-guest, #gl-guest');
     for (var i = 0; i < targets.length; i++) {
       var el = targets[i];
       if (!el) continue;

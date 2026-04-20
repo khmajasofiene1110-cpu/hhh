@@ -2,11 +2,9 @@
 
 declare(strict_types=1);
 ?>
+<!-- View: dashboard | Main balances, budget ring, activity -->
 <div class="dash-page">
-    <div id="dash-guest" class="state state--center" hidden>
-        <div class="spinner" role="status"><span class="spinner__ring" aria-hidden="true"></span></div>
-    </div>
-    <div id="dash-app" hidden>
+    <div id="dash-app">
         <header class="dash-header">
             <div class="dash-header-row">
                 <div>

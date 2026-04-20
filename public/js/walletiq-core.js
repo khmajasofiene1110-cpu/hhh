@@ -1,5 +1,6 @@
 /**
- * Client-side domain logic (ported from lib/*.ts). Same localStorage keys and behavior.
+ * File: public/js/walletiq-core.js
+ * Purpose: Client-side domain logic and localStorage persistence for WalletIQ
  */
 (function () {
   'use strict';

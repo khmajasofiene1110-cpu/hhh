@@ -5,6 +5,7 @@ declare(strict_types=1);
 $b = htmlspecialchars(base_url(), ENT_QUOTES, 'UTF-8');
 $path = route_path();
 ?>
+<!-- View: partial bottom_nav | App shell navigation -->
 <nav class="bottom-nav bottom-nav--app" aria-label="Main">
     <a class="bottom-nav__link<?= ($path === '/dashboard' || str_starts_with($path, '/dashboard/')) ? ' bottom-nav__link--active' : '' ?>" href="<?= $b ?>/dashboard">
         <span class="bottom-nav__icon-slot">

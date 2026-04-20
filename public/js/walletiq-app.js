@@ -1,5 +1,6 @@
 /**
- * UI wiring and page bootstraps (behavior aligned with the Next.js client components).
+ * File: public/js/walletiq-app.js
+ * Purpose: Page bootstraps, modals, and WalletIQCore wiring (no HTTP API).
  */
 (function () {
   'use strict';
@@ -45,74 +46,29 @@
     return './' + path;
   }
 
-  function apiUrl(rel) {
-    var r = rel.charAt(0) === '/' ? rel : '/' + rel;
-    return pathJoin(appBase(), r);
+  /** Sync user from PHP session (inline in layout) into localStorage for WalletIQCore. */
+  function applyPhpSessionUser() {
+    var w = window.__WALLETIQ_PHP_USER__;
+    if (!w || !w.username) {
+      return false;
+    }
+    ensureLocalUserFromPhpUser(w);
+    C.setSession(w.username);
+    try {
+      C.updateUserLastActive(w.username);
+    } catch (e) {}
+    return true;
   }
 
-  function withFetchTimeout(promise, ms) {
-    return Promise.race([
-      promise,
-      new Promise(function (_, reject) {
-        setTimeout(function () {
-          reject(new Error('timeout'));
-        }, ms);
-      }),
-    ]);
-  }
-
-  function fetchAuthMe() {
-    return fetch(apiUrl('/api/auth/me'), {
-      method: 'GET',
-      credentials: 'same-origin',
-      headers: { Accept: 'application/json' },
-    }).then(function (res) {
-      return res.text().then(function (t) {
-        var j = {};
-        try {
-          j = t ? JSON.parse(t) : {};
-        } catch (e) {}
-        return { ok: res.ok, data: j };
-      });
-    });
-  }
-
-  /** Sync PHP session user into localStorage so findUserBySession works (e.g. after cache clear). */
+  /** Called before page boot: hydrates local user from PHP when logged in (no fetch). */
   function ensureUserHydrated(done) {
-    withFetchTimeout(fetchAuthMe(), 12000)
-      .then(function (res) {
-        if (res.ok && res.data && res.data.user && res.data.user.username) {
-          ensureLocalUserFromApi(res.data.user);
-          C.setSession(res.data.user.username);
-        }
-      })
-      .catch(function () {})
-      .then(function () {
-        if (typeof done === 'function') done();
-      });
+    applyPhpSessionUser();
+    if (typeof done === 'function') {
+      done();
+    }
   }
 
-  function postAuth(rel, body) {
-    return fetch(apiUrl(rel), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      credentials: 'same-origin',
-      body: JSON.stringify(body || {}),
-    }).then(function (res) {
-      return res.text().then(function (t) {
-        var j = {};
-        try {
-          j = t ? JSON.parse(t) : {};
-        } catch (e) {}
-        return { ok: res.ok, status: res.status, data: j };
-      });
-    });
-  }
-
-  function ensureLocalUserFromApi(payload) {
+  function ensureLocalUserFromPhpUser(payload) {
     try {
       var uname = String(payload.username || '').trim();
       if (!uname) return;
@@ -141,71 +97,8 @@
         C.saveUsers(next);
       }
     } catch (e) {
-      console.error('ensureLocalUserFromApi', e);
+      /* ignore hydration errors */
     }
-  }
-
-  function loginWithApi(username, password) {
-    return postAuth('/api/auth/login', { username: username, password: password })
-      .then(function (res) {
-        if (res.ok && res.data.user && res.data.user.username) {
-          var su = res.data.user;
-          ensureLocalUserFromApi(su);
-          C.setSession(su.username);
-          C.updateUserLastActive(su.username);
-          return { ok: true };
-        }
-        var trimmed = String(username || '').trim();
-        var local = C.findUserByUsername(trimmed);
-        if (local && local.password && local.password === password) {
-          C.setSession(local.username);
-          C.updateUserLastActive(local.username);
-          return { ok: true };
-        }
-        return {
-          ok: false,
-          error: (res.data && res.data.error) || 'Invalid username/email or password.',
-        };
-      })
-      .catch(function () {
-        var trimmed = String(username || '').trim();
-        var local = C.findUserByUsername(trimmed);
-        if (local && local.password && local.password === password) {
-          C.setSession(local.username);
-          C.updateUserLastActive(local.username);
-          return { ok: true };
-        }
-        return { ok: false, error: 'Network error. Check your connection or try again.' };
-      });
-  }
-
-  function signupWithApi(fullName, username, email, password) {
-    return postAuth('/api/auth/register', {
-      fullName: fullName,
-      username: username,
-      email: email,
-      password: password,
-    })
-      .then(function (res) {
-        if (!res.ok) {
-          return { ok: false, error: (res.data && res.data.error) || 'Could not create account.' };
-        }
-        var u = res.data.user;
-        if (!u || !u.username) {
-          return { ok: false, error: 'Unexpected server response.' };
-        }
-        ensureLocalUserFromApi(u);
-        C.setSession(u.username);
-        C.updateUserLastActive(u.username);
-        return { ok: true };
-      })
-      .catch(function () {
-        return { ok: false, error: 'Network error. Check your connection or try again.' };
-      });
-  }
-
-  function redirect(to) {
-    window.location.href = pathJoin(appBase(), to);
   }
 
   function replace(to) {
@@ -213,6 +106,16 @@
   }
 
   function syncUserFromSession() {
+    var w = window.__WALLETIQ_PHP_USER__;
+    if (w && w.username) {
+      var byPhp = C.findUserByUsername(w.username);
+      if (byPhp) {
+        return byPhp;
+      }
+      ensureLocalUserFromPhpUser(w);
+      C.setSession(w.username);
+      return C.findUserByUsername(w.username) || null;
+    }
     var sessionUser = C.getSessionUsername();
     if (!sessionUser) return null;
     return C.findUserByUsername(sessionUser) || null;
@@ -232,158 +135,79 @@
     return new Date(d.getFullYear(), d.getMonth(), 1);
   }
 
-  // --- Home ---
-  function initHome() {
-    var loading = document.getElementById('auth-loading');
-    var panel = document.getElementById('auth-panel');
-    var form = document.getElementById('auth-form');
-    if (!form || !loading || !panel) {
-      return;
-    }
-    var tabs = document.querySelectorAll('.auth-tab');
-    var mode = 'login';
-    var fullWrap = document.getElementById('auth-fullname-wrap');
-    var emailWrap = document.getElementById('auth-email-wrap');
-    var usernameWrap = document.getElementById('auth-username-wrap');
-    var userCaption = document.getElementById('auth-username-caption');
-    var passInput = form.querySelector('input[name="password"]');
-    var fullNameInput = form.querySelector('input[name="fullName"]');
-    var usernameInput = form.querySelector('input[name="username"]');
-    var err = document.getElementById('auth-error');
-    var submitBtn = form.querySelector('.auth-submit');
+  // --- Login page: tab switch + slide between login and sign up ---
+  function initLoginAuthTabs() {
+    var slider = document.getElementById('auth-slider');
+    var tabLogin = document.getElementById('auth-tab-login');
+    var tabSignup = document.getElementById('auth-tab-signup');
+    var panelLogin = document.getElementById('auth-tabpanel-login');
+    var panelSignup = document.getElementById('auth-tabpanel-signup');
+    if (!slider || !tabLogin || !tabSignup || !panelLogin || !panelSignup) return;
 
-    function bindHomeUi() {
-      function setMode(m) {
-        mode = m;
-        tabs.forEach(function (t) {
-          var active = t.getAttribute('data-mode') === mode;
-          t.classList.toggle('auth-tab--active', active);
-          t.setAttribute('aria-selected', active ? 'true' : 'false');
-        });
-        if (fullWrap) fullWrap.hidden = mode !== 'signup';
-        if (emailWrap) emailWrap.hidden = false;
-        if (usernameWrap) usernameWrap.hidden = mode !== 'signup';
-        if (fullNameInput) {
-          fullNameInput.disabled = mode !== 'signup';
-          if (mode !== 'signup') fullNameInput.value = '';
-        }
-        if (usernameInput) {
-          usernameInput.disabled = mode !== 'signup';
-          if (mode !== 'signup') usernameInput.value = '';
-        }
-        if (userCaption) {
-          userCaption.textContent = 'Username';
-        }
-        if (passInput) {
-          passInput.setAttribute('autocomplete', mode === 'signup' ? 'new-password' : 'current-password');
-        }
-        if (submitBtn) {
-          submitBtn.textContent = mode === 'login' ? 'Log in' : 'Create account';
-        }
-        if (err) err.hidden = true;
+    function focusables(el) {
+      return el.querySelectorAll(
+        'a[href],button:not([disabled]),input:not([disabled]),textarea:not([disabled]),select:not([disabled])'
+      );
+    }
+
+    function setPaneTabbable(panel, tabbable) {
+      var nodes = focusables(panel);
+      for (var i = 0; i < nodes.length; i++) {
+        nodes[i].tabIndex = tabbable ? 0 : -1;
       }
+    }
 
-      setMode(mode);
+    function setMode(mode) {
+      var signup = mode === 'signup';
+      slider.classList.remove('auth-slider--login', 'auth-slider--signup');
+      slider.classList.add(signup ? 'auth-slider--signup' : 'auth-slider--login');
+      tabLogin.classList.toggle('auth-tab--active', !signup);
+      tabSignup.classList.toggle('auth-tab--active', signup);
+      tabLogin.setAttribute('aria-selected', signup ? 'false' : 'true');
+      tabSignup.setAttribute('aria-selected', signup ? 'true' : 'false');
+      tabLogin.tabIndex = signup ? -1 : 0;
+      tabSignup.tabIndex = signup ? 0 : -1;
+      panelLogin.setAttribute('aria-hidden', signup ? 'true' : 'false');
+      panelSignup.setAttribute('aria-hidden', signup ? 'false' : 'true');
+      setPaneTabbable(panelLogin, !signup);
+      setPaneTabbable(panelSignup, signup);
+    }
 
-      tabs.forEach(function (t) {
-        t.addEventListener('click', function () {
-          setMode(t.getAttribute('data-mode'));
-        });
-      });
+    tabLogin.addEventListener('click', function () {
+      setMode('login');
+    });
+    tabSignup.addEventListener('click', function () {
+      setMode('signup');
+    });
 
-      form.addEventListener('submit', function (e) {
+    tabLogin.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight') {
         e.preventDefault();
-        if (err) err.hidden = true;
-        var fd = new FormData(form);
-        var username = String(fd.get('username') || '');
-        var password = String(fd.get('password') || '');
-        var fullName = String(fd.get('fullName') || '');
-        var email = String(fd.get('email') || '').trim();
-        if (submitBtn) submitBtn.disabled = true;
-        if (mode === 'signup') {
-          if (!fullName.trim()) {
-            if (err) {
-              err.textContent = 'Full name is required.';
-              err.hidden = false;
-            }
-            if (submitBtn) submitBtn.disabled = false;
-            return;
-          }
-          if (!email || email.indexOf('@') === -1) {
-            if (err) {
-              err.textContent = 'A valid email is required.';
-              err.hidden = false;
-            }
-            if (submitBtn) submitBtn.disabled = false;
-            return;
-          }
-          if (!username.trim()) {
-            if (err) {
-              err.textContent = 'Username is required.';
-              err.hidden = false;
-            }
-            if (submitBtn) submitBtn.disabled = false;
-            return;
-          }
-          if (!password) {
-            if (err) {
-              err.textContent = 'Password is required.';
-              err.hidden = false;
-            }
-            if (submitBtn) submitBtn.disabled = false;
-            return;
-          }
-          signupWithApi(fullName.trim(), username.trim(), email, password).then(function (sr) {
-            if (submitBtn) submitBtn.disabled = false;
-            if (!sr.ok) {
-              if (err) {
-                err.textContent = sr.error;
-                err.hidden = false;
-              }
-              return;
-            }
-            redirect('/dashboard');
-          });
-          return;
-        }
-        if (!email || email.indexOf('@') === -1) {
-          if (err) {
-            err.textContent = 'A valid email is required.';
-            err.hidden = false;
-          }
-          if (submitBtn) submitBtn.disabled = false;
-          return;
-        }
-        loginWithApi(email, password).then(function (lr) {
-          if (submitBtn) submitBtn.disabled = false;
-          if (!lr.ok) {
-            if (err) {
-              err.textContent = lr.error;
-              err.hidden = false;
-            }
-            return;
-          }
-          redirect('/dashboard');
-        });
-      });
-    }
+        setMode('signup');
+        tabSignup.focus();
+      }
+    });
+    tabSignup.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setMode('login');
+        tabLogin.focus();
+      }
+    });
 
-    var u = syncUserFromSession();
-    if (u) {
-      loading.hidden = true;
-      replace('/dashboard');
-      return;
+    var h = (window.location.hash || '').toLowerCase();
+    if (h === '#signup') {
+      setMode('signup');
+    } else {
+      setMode('login');
     }
-    loading.hidden = true;
-    panel.hidden = false;
-    bindHomeUi();
   }
 
   // --- App guard ---
   function requireUser() {
     var user = syncUserFromSession();
     if (!user) {
-      replace('/');
+      replace('/login');
       return null;
     }
     return user;
@@ -546,15 +370,13 @@
 
   // --- Dashboard ---
   function initDashboard() {
-    var guest = document.getElementById('dash-guest');
     var app = document.getElementById('dash-app');
     var user = syncUserFromSession();
     if (!user) {
-      replace('/');
+      replace('/login');
       return;
     }
-    guest.hidden = true;
-    app.hidden = false;
+    if (app) app.hidden = false;
 
     function bump() {
       paint();
@@ -568,7 +390,7 @@
     function paint() {
       var cur = syncUserFromSession();
       if (!cur) {
-        replace('/');
+        replace('/login');
         return;
       }
       user = cur;
@@ -1320,7 +1142,7 @@
     }
     function openProfileForUser(user) {
       if (!user) {
-        replace('/');
+        replace('/login');
         return;
       }
       try {
@@ -1373,25 +1195,20 @@
       var resetOpen = document.getElementById('pf-reset-open');
       var modalCancel = document.getElementById('pf-modal-cancel');
       var modalConfirm = document.getElementById('pf-modal-confirm');
-      var logoutBtn = document.getElementById('pf-logout');
-
       if (resetOpen && backdrop && modal) {
         resetOpen.addEventListener('click', function () {
           backdrop.hidden = false;
-          modal.hidden = false;
         });
       }
       if (modalCancel && backdrop && modal) {
         modalCancel.addEventListener('click', function () {
           backdrop.hidden = true;
-          modal.hidden = true;
         });
       }
       if (backdrop && modal) {
         backdrop.addEventListener('click', function (e) {
           if (e.target === backdrop) {
             backdrop.hidden = true;
-            modal.hidden = true;
           }
         });
       }
@@ -1399,7 +1216,6 @@
         modalConfirm.addEventListener('click', function () {
           C.clearUserTransactions(user.username);
           backdrop.hidden = true;
-          modal.hidden = true;
           var msgEl = document.getElementById('pf-msg');
           if (msgEl) {
             msgEl.textContent =
@@ -1408,152 +1224,24 @@
           }
         });
       }
-      if (logoutBtn) {
-        logoutBtn.addEventListener('click', function () {
-          postAuth('/api/auth/logout', {}).finally(function () {
-            C.clearSession();
-            replace('/');
-          });
-        });
-      }
     } catch (err) {
-      console.error(err);
       showProfileBootError(
-        'Profile could not load. Refresh the page or open the console (F12). If the problem persists, check that /api/auth/me returns JSON and MySQL is running.'
+        'Profile could not load. Refresh the page or open the console (F12).'
       );
     }
   }
 
-    var initialUser = syncUserFromSession();
-    if (initialUser) {
-      openProfileForUser(initialUser);
-      return;
-    }
-    withFetchTimeout(fetchAuthMe(), 10000)
-      .then(function (res) {
-        if (res.ok && res.data && res.data.user && res.data.user.username) {
-          ensureLocalUserFromApi(res.data.user);
-          C.setSession(res.data.user.username);
-        }
-      })
-      .catch(function () {})
-      .then(function () {
-        openProfileForUser(syncUserFromSession());
-      });
+    applyPhpSessionUser();
+    openProfileForUser(syncUserFromSession());
   }
 
-  // --- Admin login ---
-  function initAdminLogin() {
-    function authorized() {
-      var u = syncUserFromSession();
-      return (
-        C.isAdminSessionActive() ||
-        (u && C.isMasterAdminUsername(u.username) && u.password === C.DEFAULT_ADMIN_PASSWORD)
-      );
-    }
-    if (authorized()) {
-      replace('/admin');
-      return;
-    }
-    var form = document.getElementById('admin-login-form');
-    var err = document.getElementById('adm-err');
-    var submit = document.getElementById('adm-submit');
-    function syncSubmit() {
-      var u = document.getElementById('adm-user').value.trim();
-      var p = document.getElementById('adm-pass').value;
-      submit.disabled = !(u.length > 0 && p.length > 0);
-    }
-    form.addEventListener('input', syncSubmit);
-    syncSubmit();
-    form.addEventListener('submit', function (e) {
-      e.preventDefault();
-      err.hidden = true;
-      var u = document.getElementById('adm-user').value.trim().toLowerCase();
-      var p = document.getElementById('adm-pass').value;
-      if (u === 'admin' && p === 'admin123') {
-        C.setAdminSessionActive();
-        replace('/admin');
-        return;
-      }
-      err.textContent = 'Invalid credentials.';
-      err.hidden = false;
-    });
-  }
-
-  // --- Admin dashboard ---
-  function formatCreatedAt(isoOrNull) {
-    if (!isoOrNull) return '-';
-    var ts = Date.parse(isoOrNull);
-    if (isNaN(ts)) return '-';
-    return new Intl.DateTimeFormat('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: '2-digit',
-    }).format(new Date(ts));
-  }
-
-  function lastSeenLabel(user) {
-    if (user.username.trim().toLowerCase() === 'admin') return 'Online Now';
-    if (!user.last_seen) return 'Inactive';
-    var ts = Date.parse(user.last_seen);
-    if (isNaN(ts)) return 'Inactive';
-    var diffSec = Math.round((Date.now() - ts) / 1000);
-    var abs = Math.abs(diffSec);
-    if (abs < 60) return 'Active ' + abs + 's ago';
-    if (abs < 60 * 60) return 'Active ' + Math.round(abs / 60) + ' mins ago';
-    if (abs < 24 * 60 * 60) return 'Active ' + Math.round(abs / (60 * 60)) + ' hrs ago';
-    if (abs < 48 * 60 * 60) return 'Yesterday';
-    return 'Active ' + Math.round(abs / (24 * 60 * 60)) + ' days ago';
-  }
-
+  // --- Admin dashboard (users rendered server-side; delete via POST form) ---
   function initAdminDashboard() {
-    var u = syncUserFromSession();
-    var authorized =
-      C.isAdminSessionActive() ||
-      (!!u && C.isMasterAdminUsername(u.username) && u.password === C.DEFAULT_ADMIN_PASSWORD);
-    if (!authorized) {
-      replace('/admin/login');
-      return;
-    }
-
-    var users = [];
-    var pendingDelete = null;
     var tbody = document.getElementById('adm-tbody');
-    var errBox = document.getElementById('adm-error');
     var search = document.getElementById('adm-search');
-
-    function api(path, opts) {
-      return fetch(pathJoin(appBase(), path), opts || {}).then(function (res) {
-        if (res.ok) return res;
-        return res.text().then(function (t) {
-          var msg = (t && t.trim()) || 'Request failed (' + res.status + ')';
-          throw new Error(msg);
-        });
-      });
-    }
-
-    function load() {
-      errBox.hidden = true;
-      tbody.innerHTML = '<tr><td colspan="7" class="admin-table-empty">Loading users…</td></tr>';
-      api('/api/admin/users', { method: 'GET', headers: { Accept: 'application/json' } })
-        .then(function (r) {
-          return r.json();
-        })
-        .then(function (data) {
-          if (!Array.isArray(data)) throw new Error('Unexpected users response.');
-          users = data;
-          paint();
-        })
-        .catch(function (e) {
-          errBox.textContent = e.message || 'Failed to load users.';
-          errBox.hidden = false;
-          tbody.innerHTML =
-            '<tr><td colspan="7" class="admin-table-empty">' +
-            escHtml5(e.message) +
-            ' <button type="button" class="admin-retry" id="adm-retry">Retry</button></td></tr>';
-          document.getElementById('adm-retry').addEventListener('click', load);
-        });
-    }
+    var form = document.getElementById('adm-delete-form');
+    var uidInput = document.getElementById('adm-delete-user-id');
+    if (!tbody || !search) return;
 
     function escHtml5(s) {
       var d = document.createElement('div');
@@ -1561,137 +1249,80 @@
       return d.innerHTML;
     }
 
-    function mapRows() {
-      return users.map(function (urow) {
-        var isAdmin = urow.username.trim().toLowerCase() === 'admin';
-        return {
-          id: urow.id,
-          name: isAdmin ? 'Admin' : urow.username,
-          email: isAdmin ? 'admin@gmail.com' : urow.username + '@gmail.com',
-          role: isAdmin ? 'ADMIN' : 'USER',
-          createdAt: formatCreatedAt(urow.last_seen),
-          lastSeenLabel: lastSeenLabel(urow),
-          raw: urow,
-        };
-      });
-    }
-
-    function paint() {
-      var statsTotal = users.length;
-      var admins = users.filter(function (x) {
-        return x.username.trim().toLowerCase() === 'admin';
-      }).length;
-      document.getElementById('adm-stat-total').textContent = String(statsTotal);
-      document.getElementById('adm-stat-regular').textContent = String(statsTotal - admins);
-      document.getElementById('adm-stat-admins').textContent = String(admins);
-
+    search.addEventListener('input', function () {
       var q = search.value.trim().toLowerCase();
-      var rows = mapRows().filter(function (r) {
-        if (!q) return true;
-        return r.name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q);
+      var rows = tbody.querySelectorAll('tr.admin-tr');
+      rows.forEach(function (tr) {
+        var hay = (tr.getAttribute('data-search') || '').toLowerCase();
+        tr.hidden = q !== '' && hay.indexOf(q) === -1;
       });
-      tbody.innerHTML = '';
-      if (rows.length === 0) {
-        tbody.innerHTML =
-          '<tr><td colspan="7" class="admin-table-empty">No users match your search.</td></tr>';
-        return;
-      }
-      rows.forEach(function (r) {
-        var tr = document.createElement('tr');
-        tr.className = 'admin-tr';
-        tr.innerHTML =
-          '<td class="admin-td-id">' +
-          String(r.id).slice(0, 6) +
-          '...</td>' +
-          '<td class="admin-td-name">' +
-          escHtml5(r.name) +
-          '</td>' +
-          '<td class="admin-td-email">' +
-          escHtml5(r.email) +
-          '</td>' +
-          '<td><span class="admin-role"><span class="admin-role-dot"></span>' +
-          r.role +
-          '</span></td>' +
-          '<td>' +
-          escHtml5(r.createdAt) +
-          '</td>' +
-          '<td>' +
-          escHtml5(r.lastSeenLabel) +
-          '</td>' +
-          '<td class="admin-td-actions"><button type="button" class="admin-icon-btn" aria-label="Edit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button> ' +
-          '<button type="button" class="admin-icon-btn admin-icon-btn--danger" data-del="' +
-          r.id +
-          '" aria-label="Delete"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></td>';
-        tr.querySelector('[data-del]').addEventListener('click', function () {
-          pendingDelete = r;
-          document.getElementById('adm-modal-body').innerHTML =
+    });
+
+    var pendingDelId = null;
+
+    document.querySelectorAll('.adm-del-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        pendingDelId = btn.getAttribute('data-user-id');
+        var nm = btn.getAttribute('data-user-name') || '';
+        var body = document.getElementById('adm-modal-body');
+        if (body) {
+          body.innerHTML =
             '<p>This will permanently remove <strong>' +
-            escHtml5(r.name) +
+            escHtml5(nm) +
             '</strong> (ID <strong>' +
-            r.id +
+            escHtml5(String(pendingDelId)) +
             '</strong>) and all related data. This cannot be undone.</p>';
-          document.getElementById('adm-modal-backdrop').hidden = false;
-          document.getElementById('adm-modal').hidden = false;
-        });
-        tbody.appendChild(tr);
+        }
+        var bdOpen = document.getElementById('adm-modal-backdrop');
+        if (bdOpen) bdOpen.hidden = false;
+      });
+    });
+
+    function closeModal() {
+      var bd = document.getElementById('adm-modal-backdrop');
+      if (bd) bd.hidden = true;
+      pendingDelId = null;
+    }
+
+    var cancel = document.getElementById('adm-modal-cancel');
+    var backdrop = document.getElementById('adm-modal-backdrop');
+    if (cancel) cancel.addEventListener('click', closeModal);
+    if (backdrop) {
+      backdrop.addEventListener('click', function (e) {
+        if (e.target.id === 'adm-modal-backdrop') closeModal();
       });
     }
 
-    search.addEventListener('input', paint);
-
-    document.getElementById('admin-logout').addEventListener('click', function () {
-      C.clearAdminSession();
-      replace('/admin/login');
-    });
-
-    document.getElementById('adm-modal-cancel').addEventListener('click', function () {
-      document.getElementById('adm-modal-backdrop').hidden = true;
-      document.getElementById('adm-modal').hidden = true;
-      pendingDelete = null;
-    });
-    document.getElementById('adm-modal-backdrop').addEventListener('click', function (e) {
-      if (e.target.id === 'adm-modal-backdrop') {
-        document.getElementById('adm-modal-backdrop').hidden = true;
-        document.getElementById('adm-modal').hidden = true;
-        pendingDelete = null;
-      }
-    });
-    document.getElementById('adm-modal-confirm').addEventListener('click', function () {
-      if (!pendingDelete) return;
-      var id = pendingDelete.id;
-      document.getElementById('adm-modal-backdrop').hidden = true;
-      document.getElementById('adm-modal').hidden = true;
-      api('/api/admin/users/' + id, { method: 'DELETE' })
-        .then(function () {
-          users = users.filter(function (x) {
-            return x.id !== id;
-          });
-          paint();
-        })
-        .catch(function (e) {
-          errBox.textContent = e.message || 'Failed to delete.';
-          errBox.hidden = false;
-        });
-      pendingDelete = null;
-    });
-
-    load();
+    var confirm = document.getElementById('adm-modal-confirm');
+    if (confirm) {
+      confirm.addEventListener('click', function () {
+        if (!pendingDelId || !form || !uidInput) {
+          closeModal();
+          return;
+        }
+        uidInput.value = pendingDelId;
+        var bdHide = document.getElementById('adm-modal-backdrop');
+        if (bdHide) bdHide.hidden = true;
+        form.submit();
+      });
+    }
   }
 
   function boot() {
     var page = document.body.getAttribute('data-page') || '';
     ensureUserHydrated(function () {
       try {
-        if (page === 'home') initHome();
-        else if (page === 'dashboard') initDashboard();
+        if (page === 'login') {
+          initLoginAuthTabs();
+        } else if (page === 'register') {
+          /* form POST server-side */
+        } else if (page === 'dashboard') initDashboard();
         else if (page === 'stats') initStats();
         else if (page === 'budgets') initBudgets();
         else if (page === 'goals') initGoals();
         else if (page === 'profile') initProfile();
-        else if (page === 'admin_login') initAdminLogin();
         else if (page === 'admin_dashboard') initAdminDashboard();
       } catch (e) {
-        console.error(e);
         if (page === 'profile') {
           var pg = document.getElementById('pf-guest');
           var pa = document.getElementById('pf-app');

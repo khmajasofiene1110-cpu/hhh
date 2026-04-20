@@ -1,5 +1,11 @@
 <?php
 
+/**
+ * File: app/bootstrap.php
+ * Purpose: Autoload, config, routing helpers, session, CSRF, auth guards, render()
+ * Routes: Used by all PHP entry points (index.php)
+ */
+
 declare(strict_types=1);
 
 $config = require dirname(__DIR__) . '/config/config.php';
@@ -24,20 +30,7 @@ function app_config(): array
     return $config;
 }
 
-/**
- * @return array<string, mixed>
- */
-function read_json_body(): array
-{
-    $raw = file_get_contents('php://input');
-    if ($raw === false || $raw === '') {
-        return [];
-    }
-    $decoded = json_decode($raw, true);
-    return is_array($decoded) ? $decoded : [];
-}
-
-/** Web root path prefix, e.g. /projet_web/hhh when the front controller is in a subdirectory. */
+/** Web root path prefix, e.g. /Qwallet/hhh when the front controller is in a subdirectory. */
 function base_url(): string
 {
     $script = $_SERVER['SCRIPT_NAME'] ?? '';
@@ -47,6 +40,13 @@ function base_url(): string
     $script = str_replace('\\', '/', (string) $script);
     $dir = dirname($script);
     if ($dir === '/' || $dir === '\\' || $dir === '.' || $dir === '') {
+        $self = str_replace('\\', '/', (string) ($_SERVER['PHP_SELF'] ?? ''));
+        if ($self !== '' && $self !== '/') {
+            $d2 = dirname($self);
+            if ($d2 !== '/' && $d2 !== '.' && $d2 !== '') {
+                return rtrim($d2, '/');
+            }
+        }
         return '';
     }
     return rtrim($dir, '/');
@@ -105,6 +105,7 @@ function render(string $view, array $data = []): void
     $showNav = $data['showNav'] ?? false;
     $bodyClass = $data['bodyClass'] ?? '';
     $baseUrl = $base;
+    $phpUser = $data['phpUser'] ?? null;
     require dirname(__DIR__) . '/views/layout.php';
 }
 
@@ -129,5 +130,134 @@ init_session();
 try {
     Database::ensureUserManagementSchema();
 } catch (Throwable) {
-    // MySQL not running or DB missing: pages still load; API will return clear errors
+    // MySQL not running or DB missing: pages still load; DB-backed features may fail gracefully
+}
+
+function csrf_token(): string
+{
+    if (empty($_SESSION['csrf_token']) || !is_string($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+function csrf_verify(): bool
+{
+    $t = $_POST['csrf_token'] ?? null;
+    return is_string($t) && isset($_SESSION['csrf_token']) && is_string($_SESSION['csrf_token'])
+        && hash_equals($_SESSION['csrf_token'], $t);
+}
+
+function csrf_field(): void
+{
+    echo '<input type="hidden" name="csrf_token" value="' . htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') . '">';
+}
+
+/**
+ * Redirect to a path under the app (e.g. /dashboard). Uses absolute URL so XAMPP subfolders work.
+ */
+function redirect_to(string $path): void
+{
+    if ($path === '' || ($path[0] ?? '') !== '/') {
+        $path = '/' . ltrim((string) $path, '/');
+    }
+    $base = base_url();
+    $relative = $base . $path;
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    if ($host !== '') {
+        $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+            || ((string) ($_SERVER['SERVER_PORT'] ?? '') === '443');
+        $scheme = $https ? 'https' : 'http';
+        $url = $scheme . '://' . $host . $relative;
+    } else {
+        $url = $relative;
+    }
+    header('Location: ' . $url, true, 302);
+    exit;
+}
+
+/** Absolute URL for form actions (POST) so subfolder installs always hit index.php routes. */
+function app_full_url(string $path): string
+{
+    if ($path === '' || ($path[0] ?? '') !== '/') {
+        $path = '/' . ltrim((string) $path, '/');
+    }
+    $base = base_url();
+    $relative = $base . $path;
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    if ($host === '') {
+        return $relative;
+    }
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || ((string) ($_SERVER['SERVER_PORT'] ?? '') === '443');
+    $scheme = $https ? 'https' : 'http';
+    return $scheme . '://' . $host . $relative;
+}
+
+/**
+ * @return array{id: int, username: string, email: string, fullName: string, createdAt: string}|null
+ */
+function web_user_payload(): ?array
+{
+    $id = $_SESSION['user_id'] ?? null;
+    // Hardcoded admin (session marker, not a DB row): expose a stable profile for the app shell.
+    if ($id === 'admin' && is_admin_session()) {
+        return [
+            'id' => -1,
+            'username' => 'admin',
+            'email' => 'admin@walletiq.local',
+            'fullName' => 'Administrator',
+            'createdAt' => gmdate('c', 0),
+        ];
+    }
+    if (!is_int($id) && !is_string($id)) {
+        return null;
+    }
+    $uid = (int) $id;
+    if ($uid <= 0) {
+        return null;
+    }
+    try {
+        $model = new UserModel();
+        $row = $model->findById($uid);
+        if ($row === null) {
+            unset($_SESSION['user_id']);
+            return null;
+        }
+        $user = $model->publicUserRow($row);
+        $fn = $user['full_name'];
+        if ($fn === null || $fn === '') {
+            $fn = $user['username'];
+        }
+        return [
+            'id' => $user['id'],
+            'username' => $user['username'],
+            'email' => $user['email'],
+            'fullName' => $fn,
+            'createdAt' => $user['created_at'],
+        ];
+    } catch (Throwable) {
+        return null;
+    }
+}
+
+function require_web_auth(): void
+{
+    if (web_user_payload() !== null) {
+        return;
+    }
+    redirect_to('/login');
+}
+
+function is_admin_session(): bool
+{
+    return !empty($_SESSION['walletiq_is_admin']);
+}
+
+function require_admin_session(): void
+{
+    if (is_admin_session()) {
+        return;
+    }
+    redirect_to('/login');
 }

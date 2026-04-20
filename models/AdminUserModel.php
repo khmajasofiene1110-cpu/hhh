@@ -1,10 +1,13 @@
 <?php
 
+/**
+ * File: models/AdminUserModel.php
+ * Purpose: Admin dashboard user list and delete-by-id
+ * Routes: N/A (used by AdminController)
+ */
+
 declare(strict_types=1);
 
-/**
- * MySQL-backed admin user listing (same queries as server/services/adminService.mjs).
- */
 final class AdminUserModel
 {
     /**
@@ -12,7 +15,7 @@ final class AdminUserModel
      */
     public function fetchUsers(): array
     {
-        $sql = 'SELECT id, username, created_at AS last_seen, 0 AS expense_count FROM users ORDER BY id ASC';
+        $sql = 'SELECT id, username, email, created_at AS last_seen, 0 AS expense_count FROM users ORDER BY id ASC';
         $stmt = Database::pdo()->query($sql);
         $rows = $stmt->fetchAll();
         return is_array($rows) ? $rows : [];

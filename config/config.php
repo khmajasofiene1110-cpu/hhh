@@ -1,9 +1,15 @@
 <?php
 
+/**
+ * File: config/config.php
+ * Purpose: MySQL and app defaults (env overrides)
+ * Routes: N/A (included by bootstrap)
+ */
+
 declare(strict_types=1);
 
 /**
- * Application configuration. Environment variables override defaults (same names as the Node server).
+ * Application configuration. Environment variables override defaults.
  */
 return [
     'mysql' => [
